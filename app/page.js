@@ -4,11 +4,15 @@ import { initializeApp } from "firebase/app";
 import { getFirestore, collection, addDoc, onSnapshot, updateDoc, deleteDoc, doc } from "firebase/firestore";
 import { Check } from "lucide-react";
 
-const firebaseConfig = {
-  apiKey: "YOUR_KEY",
-  authDomain: "YOUR_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-};
+ const firebaseConfig = {
+    apiKey: "AIzaSyByCljkhbeRresL9AhxYPPudLtNKVZcPEg",
+    authDomain: "planner-jobs.firebaseapp.com",
+    projectId: "planner-jobs",
+    storageBucket: "planner-jobs.firebasestorage.app",
+    messagingSenderId: "24444476840",
+    appId: "1:24444476840:web:6a98df14dd95100f7a119d",
+    measurementId: "G-XXWJDYH9DR"
+  };
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
