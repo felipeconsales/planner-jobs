@@ -1,21 +1,24 @@
-"use client";
 import { useState, useEffect } from "react";
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, addDoc, onSnapshot, updateDoc, deleteDoc, doc } from "firebase/firestore";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
 import { Check } from "lucide-react";
 
- const firebaseConfig = {
-    apiKey: "AIzaSyByCljkhbeRresL9AhxYPPudLtNKVZcPEg",
-    authDomain: "planner-jobs.firebaseapp.com",
-    projectId: "planner-jobs",
-    storageBucket: "planner-jobs.firebasestorage.app",
-    messagingSenderId: "24444476840",
-    appId: "1:24444476840:web:6a98df14dd95100f7a119d",
-    measurementId: "G-XXWJDYH9DR"
-  };
+// 🔹 Firebase config atualizado
+const firebaseConfig = {
+  apiKey: "AIzaSyByCljkhbeRresL9AhxYPPudLtNKVZcPEg",
+  authDomain: "planner-jobs.firebaseapp.com",
+  projectId: "planner-jobs",
+  storageBucket: "planner-jobs.firebasestorage.app",
+  messagingSenderId: "24444476840",
+  appId: "1:24444476840:web:6a98df14dd95100f7a119d",
+  measurementId: "G-XXWJDYH9DR"
+};
 
+// 🔹 Inicializa Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app);
 
 const priorities = {
   PNLD: { label: "PNLD", style: "bg-red-100 text-red-600" },
@@ -30,7 +33,6 @@ const formatDateBR = (date) => {
   return `${d}/${m}/${y}`;
 };
 
-// 🔧 helper para garantir formato YYYY-MM-DD sem timezone
 const toISODateLocal = (d) => {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -44,27 +46,41 @@ export default function Planner() {
   const [date, setDate] = useState("");
   const [priority, setPriority] = useState("PNLD");
   const [filter, setFilter] = useState("Todos");
+  const [user, setUser] = useState(null);
 
+  // 🔹 Autenticação
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "jobs"), (snapshot) => {
-      setJobs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
     });
-    return () => unsub();
+    return () => unsubscribe();
   }, []);
 
-  // 🔧 FIX: se não houver data selecionada (primeira inserção), usa HOJE
+  // 🔹 Lê jobs do usuário logado
+  useEffect(() => {
+    if (!user) return;
+
+    const jobsRef = collection(db, "usuarios", user.uid, "jobs");
+    const unsub = onSnapshot(jobsRef, (snapshot) => {
+      setJobs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => unsub();
+  }, [user]);
+
   const addJob = async () => {
-    if (!title) return;
+    if (!title || !user) return;
 
     const safeDate = date && date.length === 10 ? date : toISODateLocal(new Date());
+    const jobsRef = collection(db, "usuarios", user.uid, "jobs");
 
-    await addDoc(collection(db, "jobs"), {
+    await addDoc(jobsRef, {
       title,
       date: safeDate,
       priority,
       status: "",
       operator: "",
-      createdAt: Date.now(), // ajuda ordenação consistente
+      createdAt: Date.now(),
     });
 
     setTitle("");
@@ -72,18 +88,24 @@ export default function Planner() {
   };
 
   const updateJob = async (id, field, value) => {
+    if (!user) return;
+    const jobRef = doc(db, "usuarios", user.uid, "jobs", id);
     let updateData = { [field]: value };
     if (field === "operator" && value) updateData.status = "Iniciado";
-    await updateDoc(doc(db, "jobs", id), updateData);
+    await updateDoc(jobRef, updateData);
   };
 
   const toggleDone = async (job) => {
+    if (!user) return;
+    const jobRef = doc(db, "usuarios", user.uid, "jobs", job.id);
     const newStatus = job.status === "Finalizado" ? "Iniciado" : "Finalizado";
-    await updateDoc(doc(db, "jobs", job.id), { status: newStatus });
+    await updateDoc(jobRef, { status: newStatus });
   };
 
   const removeJob = async (id) => {
-    await deleteDoc(doc(db, "jobs", id));
+    if (!user) return;
+    const jobRef = doc(db, "usuarios", user.uid, "jobs", id);
+    await deleteDoc(jobRef);
   };
 
   const isLate = (jobDate) => {
@@ -94,7 +116,6 @@ export default function Planner() {
   const getWeekDays = () => {
     const today = new Date();
     const start = new Date(today.setDate(today.getDate() - today.getDay()));
-
     return Array.from({ length: 7 }).map((_, i) => {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
@@ -109,6 +130,40 @@ export default function Planner() {
     if (id) updateJob(id, "date", day);
   };
 
+  // 🔹 Renderiza login se usuário não estiver logado
+  if (!user) {
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+
+    const handleLogin = async () => {
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    const handleRegister = async () => {
+      try {
+        await createUserWithEmailAndPassword(auth, email, password);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    return (
+      <div className="min-h-screen flex flex-col justify-center items-center gap-4">
+        <input placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="border p-2 rounded"/>
+        <input type="password" placeholder="Senha" value={password} onChange={e => setPassword(e.target.value)} className="border p-2 rounded"/>
+        <div className="flex gap-2">
+          <button onClick={handleLogin} className="bg-blue-500 text-white px-4 py-2 rounded">Login</button>
+          <button onClick={handleRegister} className="bg-green-500 text-white px-4 py-2 rounded">Registrar</button>
+        </div>
+      </div>
+    );
+  }
+
+  // 🔹 Render do planner continua igual
   return (
     <div className="min-h-screen bg-gray-100 p-6">
       {/* HEADER */}
